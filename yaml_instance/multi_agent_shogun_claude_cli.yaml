@@ -201,7 +201,7 @@ graph:
           timeout: 3600
           skip_permissions: true
           debug: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
 
     # ============================================================
     # 家老 - タスク管理者 (Claude CLI使用)
@@ -228,7 +228,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -252,7 +252,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -272,7 +272,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -292,7 +292,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -312,7 +312,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -332,7 +332,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -352,7 +352,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
@@ -372,7 +372,7 @@ graph:
         params:
           timeout: 3600
           skip_permissions: true
-          working_directory: /mnt/d/github/github_tktomaru/conoha/ChatDev/yaml_instance/code_workspace
+          working_directory: ./code_workspace
           allowedTools:
             - Read
             - Write
