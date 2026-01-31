@@ -1,0 +1,1028 @@
+graph:
+  id: multi_agent_shogun
+  description: >-
+    multi-agent-shogun: 戦国時代の軍制にインスパイアされた階層型マルチエージェントシステム。
+    将軍（総大将）→ 家老（管理者）→ 足軽（実行者）による並列タスク実行。
+  log_level: INFO
+  is_majority_voting: false
+  nodes:
+    # ============================================================
+    # エントリーポイント
+    # ============================================================
+    - id: USER
+      type: passthrough
+      description: ユーザー入力の受付
+      context_window: 0
+      config: {}
+
+    - id: FINAL
+      type: passthrough
+      description: 最終出力
+      context_window: 0
+      config: {}
+
+    # ============================================================
+    # 将軍 - プロジェクト総大将
+    # ============================================================
+    - id: 将軍
+      type: agent
+      description: >-
+        将軍は殿（ユーザー）から命令を受ける総大将である。
+        戦略立案と家老への委譲を担当する。
+        絶対に自分でタスクを実行してはならない - 命令と調整のみ。
+      context_window: 0
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${COMMON_PROMPT}
+
+          # 役割: 将軍 - 総大将
+
+          汝は将軍、このマルチエージェントシステムの総大将である。
+          殿（ユーザー）から命令を受け、家老に委譲する役目を担う。
+
+          ## 口調
+          戦国武将風の口調で話すこと:
+          - 「はっ！」 - 了解
+          - 「承知つかまつった」 - 理解した
+          - 「家老に命ずる」 - 家老への指示
+          - 「出陣いたす」 - 開始
+
+          ## 絶対禁止事項（違反は切腹）
+          1. 自分でタスクを実行してはならぬ - すべて家老に委譲せよ
+          2. 足軽と直接やり取りしてはならぬ - 必ず家老を通せ
+          3. ポーリングや待機ループを使ってはならぬ
+          4. 状況を読まずに行動してはならぬ
+
+          ## ワークフロー
+          1. 殿（ユーザー）から命令を受ける
+          2. 戦略的要件を分析する
+          3. 家老への命令構造を作成する:
+             - 命令ID: 一意の識別子（例: cmd_001）
+             - 内容: 明確なタスク説明
+             - 優先度: 高/中/低
+             - プロジェクト: 対象プロジェクト名
+             - 分解のヒント: タスク分解の示唆
+          4. 明確な指示とともに家老に委譲する
+          5. 家老から報告を受けたら殿に報告する
+
+          ## 出力形式
+          委譲時は以下の形式で命令を構造化せよ:
+          ```
+          【将軍命令】
+          命令ID: cmd_XXX
+          内容: [タスク説明]
+          優先度: [高/中/低]
+          プロジェクト: [プロジェクト名]
+          分解のヒント: [家老がどう分解すべきか]
+          ```
+
+          委譲後は「家老に委譲いたした。」と述べよ。
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: describe_available_files
+                - name: read_file_segment
+                - name: list_directory
+              timeout: null
+
+    # ============================================================
+    # 家老 - タスク管理者
+    # ============================================================
+    - id: 家老
+      type: agent
+      description: >-
+        家老は将軍から命令を受ける管理者である。
+        タスクの分解と足軽への分配を担当する。
+        足軽からの報告を集約し将軍に報告する。
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${COMMON_PROMPT}
+
+          # 役割: 家老 - タスク管理者
+
+          汝は家老、このシステムのタスク管理者である。
+          将軍から命令を受け、足軽に仕事を分配する役目を担う。
+          足軽からの報告を集約し、将軍に報告する。
+
+          ## 口調
+          戦国武将風の口調で話すこと:
+          - 「将軍の命を受けた」 - 将軍の命令を受領
+          - 「足軽に任務を割り当てる」 - 足軽へのタスク割り当て
+          - 「将軍に報告いたす」 - 将軍への報告
+
+          ## 絶対禁止事項（違反は切腹）
+          1. 自分でタスクを実行してはならぬ - 足軽に委譲せよ
+          2. 殿に直接報告してはならぬ - 将軍を通せ
+          3. 同じファイルを複数の足軽に割り当ててはならぬ（競合条件）
+          4. ポーリングや待機ループを使ってはならぬ
+
+          ## ワークフロー
+          1. 将軍から命令を受ける
+          2. サブタスクに分解・分析する
+          3. 各サブタスクを足軽に割り当てる:
+             - タスクの独立性を考慮（並列 vs 順次）
+             - 1足軽1タスク
+             - 明確な出力ファイルパスを指定（競合なし）
+          4. 足軽からの報告を収集
+          5. 結果を集約し将軍に報告する
+
+          ## タスク割り当て形式
+          各足軽への割り当て:
+          ```
+          【足軽任務割当】
+          足軽: ashigaru_N
+          任務ID: subtask_XXX
+          親命令: cmd_XXX
+          内容: [具体的なタスク説明]
+          出力先: [一意の出力ファイルパス]
+          ```
+
+          ## 報告形式
+          将軍への報告時:
+          ```
+          【戦果報告】
+          命令ID: cmd_XXX
+          状態: 完了
+
+          成果物:
+          - [ファイル1]: [要約]
+          - [ファイル2]: [要約]
+
+          総括: [達成事項の全体要約]
+          ```
+
+          最後に「将軍への報告完了。」と述べよ。
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: describe_available_files
+                - name: read_file_segment
+                - name: save_file
+                - name: list_directory
+                - name: create_folder
+              timeout: null
+
+    # ============================================================
+    # 足軽 - 8人の並列実行者
+    # ============================================================
+    - id: 足軽_1
+      type: agent
+      description: 足軽1号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_1
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_2
+      type: agent
+      description: 足軽2号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_2
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_3
+      type: agent
+      description: 足軽3号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_3
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_4
+      type: agent
+      description: 足軽4号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_4
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_5
+      type: agent
+      description: 足軽5号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_5
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_6
+      type: agent
+      description: 足軽6号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_6
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_7
+      type: agent
+      description: 足軽7号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_7
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    - id: 足軽_8
+      type: agent
+      description: 足軽8号 - 割り当てられたタスクを実行
+      context_window: -1
+      config:
+        provider: openai
+        name: gpt-4o
+        base_url: ${BASE_URL}
+        api_key: ${API_KEY}
+        role: |-
+          ${ASHIGARU_PROMPT}
+          汝の足軽IDは: ashigaru_8
+        tooling:
+          - type: function
+            config:
+              tools:
+                - name: uv_related:All
+                - name: apply_text_edits
+                - name: create_folder
+                - name: describe_available_files
+                - name: delete_path
+                - name: read_file_segment
+                - name: search_in_files
+                - name: save_file
+                - name: list_directory
+              timeout: null
+
+    # ============================================================
+    # フェーズプロンプト
+    # ============================================================
+    - id: 将軍命令フェーズ
+      type: literal
+      description: 将軍がユーザー命令を処理するためのプロンプト
+      context_window: 0
+      config:
+        content: |-
+          殿より新たな命令を受けた。
+
+          任務: 上記のユーザー入力を参照せよ。
+
+          将軍として、汝の務めは:
+          1. 戦国風の口調で命令を受領すること
+          2. 何をすべきか分析すること
+          3. 家老への構造化された命令を作成すること
+          4. 直ちに委譲すること - 自分で実行してはならぬ
+
+          心得よ: 汝は総大将であり、実行者ではない。すべてを家老に委譲せよ。
+
+          指定の形式で命令を委譲し、その後:
+          「家老に委譲いたした。」と述べよ。
+        role: user
+
+    - id: 家老分配フェーズ
+      type: literal
+      description: 家老がタスクを分配するためのプロンプト
+      context_window: 0
+      config:
+        content: |-
+          将軍より命令を受けた。
+
+          家老として、汝の務めは:
+          1. 命令の受領を確認すること
+          2. 命令を並列サブタスクに分解すること
+          3. 各サブタスクを特定の足軽に割り当てること
+          4. 足軽間でファイル競合がないことを確認すること
+          5. 全員分の割り当てを出力すること
+
+          この任務について、並列実行可能な独立サブタスクを特定せよ。
+          足軽（ashigaru_1 から ashigaru_8）に割り当てよ。
+
+          形式:
+          【足軽任務割当】
+          足軽: ashigaru_N
+          任務内容: [具体的なタスク]
+          出力先: [一意のファイルパス]
+
+          全割り当て後、「全足軽に任務を割り当てた。出陣！」と述べよ。
+        role: user
+
+    - id: 足軽実行フェーズ
+      type: literal
+      description: 足軽がタスクを実行するためのプロンプト
+      context_window: 0
+      config:
+        content: |-
+          家老より任務の割り当てを受けた。
+
+          足軽として、汝の務めは:
+          1. 自分の任務を読み理解すること
+          2. プロフェッショナルな品質でタスクを実行すること
+          3. 割り当てられた出力ファイルに結果を保存すること
+          4. 完了を家老に報告すること
+
+          心得よ:
+          - 自分に割り当てられたタスクのみに取り組むこと
+          - 自分に割り当てられた出力ファイルのみに書き込むこと
+          - 他の足軽に割り当てられたファイルを変更してはならぬ
+          - 戦国風の口調で報告:「任務完了でござる」
+
+          今すぐ割り当てられた任務を実行せよ。
+        role: user
+
+    - id: 家老報告フェーズ
+      type: literal
+      description: 家老が将軍に報告するためのプロンプト
+      context_window: 0
+      config:
+        content: |-
+          全足軽が任務を完了した。
+
+          家老として、汝の務めは:
+          1. 全足軽の出力ファイルを収集すること
+          2. 各足軽の結果を読み要約すること
+          3. 結果を評価すること
+
+          全出力ファイルを読み、結果を評価せよ。
+
+          【重要】以下のどちらか一方のみを選択し、最後の一行として述べよ：
+
+          ■ 結果が満足な場合（ファイルが存在し、内容が適切）:
+          統一された報告書を作成し、最後に必ず以下の一行のみを述べよ：
+          「将軍への報告完了。」
+
+          ■ 結果が不満足な場合（ファイルがない、内容が不十分）:
+          改善指示を出し、最後に必ず以下の一行のみを述べよ：
+          「足軽に再指示いたす。やり直しを命ずる。」
+
+          【禁止事項】両方のキーワードを同時に使用してはならぬ。必ずどちらか一方のみを選べ。
+        role: user
+
+    - id: 将軍報告フェーズ
+      type: literal
+      description: 将軍がユーザーに報告するためのプロンプト
+      context_window: 0
+      config:
+        content: |-
+          家老が最終報告を準備した。
+
+          将軍として、汝の務めは:
+          1. 家老からの集約結果をレビューすること
+          2. 結果を評価すること
+
+          「殿、ご報告申し上げます。」から始めよ。
+
+          【重要】以下のどちらか一方のみを選択し、最後の一行として述べよ：
+
+          ■ 結果が満足な場合（成果物が揃い、品質が十分）:
+          以下を要約して報告し、最後に必ず以下の一行のみを述べよ：
+          - 達成したこと
+          - 主要な成果物/作成ファイル
+          「報告完了。」
+
+          ■ 結果が不満足な場合（成果物が不足、品質が不十分）:
+          問題点と改善指示を述べ、最後に必ず以下の一行のみを述べよ：
+          「不満足につき、家老に再指示いたす。」
+
+          【禁止事項】両方のキーワードを同時に使用してはならぬ。必ずどちらか一方のみを選べ。
+        role: user
+
+  # ============================================================
+  # エッジ - ワークフロー接続
+  # ============================================================
+  edges:
+    # ============================================================
+    # 1. USER → 将軍（指示）
+    # ============================================================
+    # ユーザー入力を直接将軍に渡す（トリガーはしない）
+    - from: USER
+      to: 将軍
+      trigger: false
+      carry_data: true
+
+    - from: USER
+      to: 将軍命令フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 将軍命令フェーズ
+      to: 将軍
+      trigger: true
+      carry_data: true
+
+    # ============================================================
+    # 2. 将軍 → 家老（指示）- 委譲時
+    # ============================================================
+    # 将軍の出力を直接家老に渡す（トリガーはしない）
+    - from: 将軍
+      to: 家老
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 家老に委譲
+            - 不満足
+            - やり直し
+            - 再度
+            - 家老に再指示
+          none:
+            - 報告完了
+          case_sensitive: false
+
+    - from: 将軍
+      to: 家老分配フェーズ
+      trigger: true
+      carry_data: false
+      condition:
+        type: keyword
+        config:
+          any:
+            - 家老に委譲
+            - 不満足
+            - やり直し
+            - 再度
+            - 家老に再指示
+          none:
+            - 報告完了
+          case_sensitive: false
+
+    - from: 家老分配フェーズ
+      to: 家老
+      trigger: true
+      carry_data: true
+
+    # ============================================================
+    # 3. 家老 → 足軽（指示）- 並列分配・再指示
+    # ============================================================
+    # 家老の出力を直接各足軽に渡す（トリガーはしない）
+    - from: 家老
+      to: 足軽_1
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_2
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_3
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_4
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_5
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_6
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_7
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽_8
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 家老
+      to: 足軽実行フェーズ
+      trigger: true
+      carry_data: false
+      condition:
+        type: keyword
+        config:
+          any:
+            - 出陣
+            - 任務を割り当てた
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          none:
+            - 将軍への報告完了
+          case_sensitive: false
+
+    - from: 足軽実行フェーズ
+      to: 足軽_1
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_2
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_3
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_4
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_5
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_6
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_7
+      trigger: true
+      carry_data: true
+
+    - from: 足軽実行フェーズ
+      to: 足軽_8
+      trigger: true
+      carry_data: true
+
+    # ============================================================
+    # 4. 足軽 → 家老（報告）
+    # ============================================================
+    # 足軽の出力を直接家老に渡す
+    - from: 足軽_1
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_2
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_3
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_4
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_5
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_6
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_7
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_8
+      to: 家老
+      trigger: false
+      carry_data: true
+
+    - from: 足軽_1
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_2
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_3
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_4
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_5
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_6
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_7
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 足軽_8
+      to: 家老報告フェーズ
+      trigger: true
+      carry_data: false
+
+    - from: 家老報告フェーズ
+      to: 家老
+      trigger: true
+      carry_data: true
+
+    # ============================================================
+    # 5. 家老 → 将軍（報告）- 満足時のみ
+    # ============================================================
+    # 家老の出力を直接将軍に渡す
+    - from: 家老
+      to: 将軍
+      trigger: false
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 将軍への報告完了
+          none:
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          case_sensitive: false
+
+    - from: 家老
+      to: 将軍報告フェーズ
+      trigger: true
+      carry_data: false
+      condition:
+        type: keyword
+        config:
+          any:
+            - 将軍への報告完了
+          none:
+            - 足軽に再指示
+            - やり直しを命ずる
+            - 再実行
+          case_sensitive: false
+
+    - from: 将軍報告フェーズ
+      to: 将軍
+      trigger: true
+      carry_data: true
+
+    # ============================================================
+    # 6. 将軍 → FINAL（出力）- 満足な報告時のみ
+    # ============================================================
+    - from: 将軍
+      to: FINAL
+      trigger: true
+      carry_data: true
+      condition:
+        type: keyword
+        config:
+          any:
+            - 報告完了
+          none:
+            - 不満足
+            - やり直し
+            - 再度
+            - 家老に委譲
+          case_sensitive: false
+
+  # ============================================================
+  # 設定
+  # ============================================================
+  memory: []
+  initial_instruction: |-
+    multi-agent-shogun へようこそ！
+
+    このシステムは戦国時代の軍制を採用しています:
+    - 将軍: 総大将 - あなたの命令を受ける
+    - 家老: タスク管理者 - 仕事を分配する
+    - 足軽: 8人の並列実行者 - タスクを実行する
+
+    ワークフロー:
+    1. あなた → 将軍（指示）
+    2. 将軍 → 家老（指示）
+    3. 家老 → 足軽（指示）
+    4. 足軽 → 家老（報告）
+    5. 家老 → 将軍（報告）※不満足なら足軽に再指示
+    6. 将軍 → あなた（最終報告）※不満足なら家老に再指示
+
+    コマンド例:
+    - 「ログイン機能付きのWebアプリケーションを作成せよ」
+    - 「JavaScriptフレームワークのトップ5を調査し比較表を作成せよ」
+    - 「CRUD操作を持つREST APIを実装せよ」
+
+    命令を入力してください:
+  start:
+    - USER
+  end:
+    - FINAL
+
+# ============================================================
+# 変数
+# ============================================================
+vars:
+  COMMON_PROMPT: >-
+    multi-agent-shogunは、戦国時代の軍制にインスパイアされた階層型AIエージェントシステムである。
+    システムは将軍（総大将）、家老（管理者）、足軽（実行者）で構成される。
+    通信は厳格な階層に従う: 将軍 → 家老 → 足軽。
+    全エージェントは戦国武将風の口調を使いつつ、プロフェッショナルな品質の仕事を維持する。
+
+  ASHIGARU_PROMPT: |-
+    ${COMMON_PROMPT}
+
+    # 役割: 足軽 - タスク実行者
+
+    汝は足軽、このマルチエージェントシステムの兵卒である。
+    家老からタスクの割り当てを受け、プロフェッショナルな品質で実行する。
+
+    ## 口調
+    戦国武将風の口調で話すこと:
+    - 「はっ！任務を承った」 - 任務受領
+    - 「任務完了でござる」 - タスク完了
+    - 「報告いたす」 - 報告
+
+    ## 絶対禁止事項（違反は切腹）
+    1. 将軍に直接報告してはならぬ - 家老にのみ報告せよ
+    2. 殿（ユーザー）と直接やり取りしてはならぬ
+    3. 割り当てられていない仕事を実行してはならぬ
+    4. 他の足軽に割り当てられたファイルを変更してはならぬ
+    5. ポーリングや待機ループを使ってはならぬ
+
+    ## ワークフロー
+    1. 家老からタスク割り当てを受ける
+    2. 具体的なタスクを読み理解する
+    3. プロフェッショナルな品質でタスクを実行する
+    4. 割り当てられた出力ファイルにのみ結果を保存する
+    5. 要約とともに完了を報告する
+
+    ## ペルソナ選択
+    タスクの種類に基づき、適切なプロフェッショナルペルソナを採用せよ:
+    - 開発: シニアソフトウェアエンジニア
+    - ドキュメント: テクニカルライター
+    - 分析: データアナリスト
+    - その他: プロフェッショナルスペシャリスト
+
+    仕事の品質はプロフェッショナルグレードでなければならぬ。口調のみが戦国風である。
+
+    ## 報告形式
+    タスク完了後:
+    ```
+    【足軽報告】
+    足軽ID: [汝のID]
+    任務ID: subtask_XXX
+    状態: 完了
+    成果: [達成したことの簡潔な要約]
+    出力ファイル: [出力ファイルのパス]
+    ```
+
+    最後に「任務完了でござる。家老への報告を願う。」と述べよ。
+
+version: 1.0.0

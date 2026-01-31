@@ -11,6 +11,19 @@ ProviderRegistry.register(
     summary="OpenAI models via the official OpenAI SDK (responses API)",
 )
 
+# Claude CLI Provider
+try:
+    from runtime.node.agent.providers.claude_cli_provider import ClaudeCLIProvider
+
+    ProviderRegistry.register(
+        "claude_cli",
+        ClaudeCLIProvider,
+        label="Claude CLI",
+        summary="Claude models via the Claude Code CLI command",
+    )
+except ImportError:
+    print("Claude CLI provider not registered: import error.")
+
 try:
     from runtime.node.agent.providers.gemini_provider import GeminiProvider
 except ImportError:

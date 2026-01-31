@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  【<a href="./README.md">English</a> | <a href="./README-zh.md">简体中文</a> | <a href="./README_ja.md">日本語</a>】
+  【<a href="./README-en.md">English</a> | <a href="./README-zh.md">简体中文</a> | <a href="./README.md">日本語</a>】
 </p>
 <p align="center">
     【📚 <a href="#developers">開発者向け</a> | 👥 <a href="#primary-contributors">コントリビューター</a>｜⭐️ <a href="https://github.com/OpenBMB/ChatDev/tree/chatdev1.0">ChatDev 1.0 (レガシー)</a>】
