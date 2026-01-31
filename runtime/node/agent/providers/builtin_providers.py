@@ -24,6 +24,19 @@ try:
 except ImportError:
     print("Claude CLI provider not registered: import error.")
 
+# Codex CLI Provider
+try:
+    from runtime.node.agent.providers.codex_cli_provider import CodexCLIProvider
+
+    ProviderRegistry.register(
+        "codex_cli",
+        CodexCLIProvider,
+        label="Codex CLI",
+        summary="Codex models via the Codex CLI command",
+    )
+except ImportError:
+    print("Codex CLI provider not registered: import error.")
+
 try:
     from runtime.node.agent.providers.gemini_provider import GeminiProvider
 except ImportError:
